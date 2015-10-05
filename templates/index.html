@@ -1,9 +1,14 @@
+<!DOCTYPE html>
 <html>
 	<head>
-		<title>Teh Weather</title>
+		<title>Whats The Weather</title>
+		<link rel="stylesheet" type="text/css" href="templates/style.css">
 	</head>
 	<body>
-		<h1>Please pick a destination</h1>
-		<h3>City here</h3>
-		<h3>Submit</h3>
+		<form method="post" action = '' enctype = 'application/x-www-form-urlencoded' id = 'form'>
+			<input type="text" placeholder = 'Enter a City' id='input' name='city-coords' >
+			<input type="submit" value="Search" id = 'button'>
+		</form>
 	</body>
+</html>
+

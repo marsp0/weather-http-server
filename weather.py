@@ -1,4 +1,5 @@
 from SocketServer import *
+import requests
 import os
 
 class WeatherRequestHandler(StreamRequestHandler):
@@ -115,6 +116,7 @@ class WeatherRequestHandler(StreamRequestHandler):
 			#here we first add the requestline instead of receiving to avoid adding the \r\n part
 			headers += requestline
 			requestline = self.rfile.readline()
+		print requestline
 		#remove the final \n and split the rest of the string to a list
 		headers = headers.rstrip().split('\r\n')
 		for header in headers:
@@ -122,7 +124,7 @@ class WeatherRequestHandler(StreamRequestHandler):
 			key,value = header.split(':',1)
 			values = value.split(',')
 			if len(values) == 1:
-				temp_dict[key] = value
+				temp_dict[key] = value.strip()
 			else:
 				temp_dict[key] = values
 		return temp_dict
@@ -135,13 +137,10 @@ class WeatherRequestHandler(StreamRequestHandler):
 		'''send the separator between the headers and the content'''
 		self.wfile.write('\r\n')
 
-	def send_error(self,code):
+	def send_error(self,code,short = None, longer = None):
 		#try to find the error in the responses tuple and if
 		#its not there make it lel
-		try:
-			title,msg = self.responses[code]
-		except KeyError:
-			title,msg = 'LEL','lel'
+		title,msg = self.responses[code]
 		#send the actual first line
 		self.send_response(code)
 		#send the type of content that you are going to send
@@ -165,11 +164,32 @@ class WeatherRequestHandler(StreamRequestHandler):
 			self.send_headers('Connection','close')
 			self.end_headers()
 			self.wfile.write(response_html)
+		elif self.path == '/templates/style.css':
+			response_css = open(self.path[1:]).read()
+			self.send_response(200)
+			self.send_headers('Content-Type','text/css')
+			self.send_headers('Content-Length','{}'.format(len(response_css)))
+			self.send_headers('Connection','close')
+			self.end_headers()
+			self.wfile.write(response_css)
+		else:
+			self.send_error(404)
+
+	def post(self):
+		print self.path
+		if self.path == '/':
+			to_get = int(self.headers['Content-Length'])
+			if to_get > 1024:
+				self.send_error(404)
+			else:
+				data = self.rfile.read(to_get)
+			arg, value = data.split('=',1)
+			p = requests.get('http://api.openweathermap.org/data/2.5/weather?q={}'.format(value))
 		else:
 			self.send_error(404)
 
 
 
 if __name__=='__main__':
-	server = ThreadingTCPServer(('',9998),WeatherRequestHandler)
+	server = ThreadingTCPServer(('',9996),WeatherRequestHandler)
 	server.serve_forever()
