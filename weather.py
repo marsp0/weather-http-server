@@ -116,7 +116,6 @@ class WeatherRequestHandler(StreamRequestHandler):
 			#here we first add the requestline instead of receiving to avoid adding the \r\n part
 			headers += requestline
 			requestline = self.rfile.readline()
-		print requestline
 		#remove the final \n and split the rest of the string to a list
 		headers = headers.rstrip().split('\r\n')
 		for header in headers:
@@ -176,7 +175,6 @@ class WeatherRequestHandler(StreamRequestHandler):
 			self.send_error(404)
 
 	def post(self):
-		print self.path
 		if self.path == '/':
 			to_get = int(self.headers['Content-Length'])
 			if to_get > 1024:
