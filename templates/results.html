@@ -1,15 +1,36 @@
 <html>
 	<head>
-		<title>The weather in {city_name}</title>
+		<title>{city_name} weather!</title>
 		<link rel="stylesheet" type="text/css" href="templates/results.css">
 	</head>
 	<body>
-		<div id='results'>
-			<div id='icon_div'>
+		<div id='results_section'>
+			<div id='icon_section'>
 				<img src="static/moon.png">
 			</div>
-			<div id ='pp'>
-				<p> hahahaha </p>
+			<div id ='info_section'>
+				<h3>Info</h3>
+				<div class = 'one_item_div'>
+					<p class = 'key' >Weather</p>
+					<p class = 'value' >{weather}</p>
+				</div>
+				<div class = 'one_item_div'>
+					<p class = 'key' >Temperature</p>
+					<p class = 'value' >{temp}</p>
+				</div>
+				<div class = 'one_item_div'>
+					<p class = 'key' >Pressure</p>
+					<p class = 'value' >{pressure}</p>
+				</div>
+				<div class = 'one_item_div'>
+					<p class = 'key' >Wind speed</p>
+					<p class = 'value' >{wind_speed}</p>
+				</div>
+				<div class = 'one_item_div'>
+					<p class = 'key' >Wind degrees</p>
+					<p class = 'value' >{wind_degrees}</p>
+				</div>
+
 			</div>
 		</div>
 	</body>

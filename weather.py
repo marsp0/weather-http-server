@@ -120,9 +120,15 @@ class WeatherRequestHandler(StreamRequestHandler):
 			else:
 				data = self.rfile.read(to_get)
 			arg, value = data.split('=',1)
-			connection = shl.Connection('http://api.openweathermap.org/data/2.5/weather?q={}'.format(value))
+			connection = shl.Connection('http://api.openweathermap.org/data/2.5/weather?q={}&key=19b027647cd09a6fdb090fd32a2d73fc'.format(value))
 			response = connection.get()
-			to_return = open('templates/results.html').read().format(city_name = value)
+			response_dict = response.jsonify()
+			print response_dict
+			to_return = open('templates/results.html').read().format(city_name = value, weather = response_dict['weather'][0]['main'],
+																		temp = response_dict['main']['temp'],
+																		pressure = response_dict['main']['pressure'],
+																		wind_speed = response_dict['wind']['speed'],
+																		wind_degrees = response_dict['wind']['deg'])
 			self.send_response(200)
 			self.send_headers('Content-Type','text/html')
 			self.send_headers('Content-Length','{}'.format(len(to_return)))
@@ -135,5 +141,5 @@ class WeatherRequestHandler(StreamRequestHandler):
 
 
 if __name__=='__main__':
-	server = ThreadingTCPServer(('',9992),WeatherRequestHandler)
+	server = ThreadingTCPServer(('',9997),WeatherRequestHandler)
 	server.serve_forever()
