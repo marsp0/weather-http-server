@@ -10,6 +10,8 @@
 #5. repeat i guess
 
 import socket
+from utils import responses
+import json
 
 '''Exceptions here'''
 
@@ -46,6 +48,8 @@ class HeaderDoesntExist(HeaderException):
 	def __init__(self,header):
 		HeaderException.__init__(self,header)
 		self.message = 'The given header doesn\'t exist'
+
+'''Connection class for establishement of the connection '''
 
 class Connection(object):
 
@@ -124,22 +128,101 @@ class Connection(object):
 		except KeyError:
 			raise HeaderDoesntExist(header)
 
-	def get(self):
+	def get(self,data = None):
+		#prepare the request line with placeholders for the data path and the http version
 		request_line = 'GET {} {}\r\n'
-		if self.data:
-			request_line = request_line.format('/'+self.data, self.protocol_version)
-		elif self.data == '':	
-			request_line = request_line.format('/',self.protocol_version)
+		if not data:
+			#if the get method was called without any data, then we use the one passed to the constructor
+			if self.data:
+				request_line = request_line.format('/'+self.data, self.protocol_version)
+			#if no data was passed to the constructor we just request the home page
+			elif self.data == '':	
+				request_line = request_line.format('/',self.protocol_version)
+		else:
+			#here we prepend the '/' to the path
+			if not data.startswith('/'):
+				request_line = request_line.format('/' + data, self.protocol_version)
+			else:
+				request_line = request_line.format(data, self.protocol_version)
+		#prepare the whole request
 		to_send = request_line + self.string_headers()
+		#we send the info
 		self.sock.write(to_send)
+		#for some reason we have to flush manually because it stays in the buffer
+		#i say for some reason because when i send info from the server to the client i dont have to call flush manually
+		#probably there is some logic that i dont understand
 		self.sock.flush()
-		print repr(self.sock.readline())
+		return self.handle_response()
+
+	def handle_response(self):
+		''' function that returns a response object '''
+		#check the first line
+		response = self.sock.readline().rstrip('\r\n')
+		response_list = response.split()
+		#split the response line and check the len
+		if len(response_list) > 3:
+			protocol = response_list[0]
+			response_code = response_list[1]
+			response_message = ' '.join(response_list[2:])
+		else:
+			protocol, response_code, response_message = response_list
+		#start getting the headers
+		response_line = ''
+		response_header_string = ''
+		while response_line != '\r\n':
+			response_header_string += response_line
+			response_line = self.sock.readline()
+		#create a list from the header string
+		response_headers = response_header_string.rstrip('\r\n').split('\r\n')
+		#return the response if  there was no body to read
+		if response_code.startswith('1') or response_code in ('204','304'):
+			return Response((protocol, response_code, response_message), response_headers, responses[int(response_code)])
+		else:
+			#if there is body we ceck the Content length or the Transfer Encoding for the length of the body
+			for header in response_headers:
+				data = ''
+				#check if the header is content length and get the body
+				if header.startswith('Content-Length'):
+					length = int(header[header.find(':')+1:].strip())
+					data = self.sock.read(length)
+					return Response((protocol, response_code, response_message), response_headers, data)
+				#if on the other hand is Transfer-Envoding we again get the rest of the body
+				elif header == 'Transfer-Encoding: chunked':
+					while True:
+						chunk_size = self.sock.readline()
+						if chunk_size != '0\r\n':
+							chunk_size = int('0x' + chunk_size.rstrip('\r\n'), 0)
+							data = self.sock.read(chunk_size).rstrip('\n')
+							_ = self.sock.readline()
+						else:
+							break
+					return Response((protocol, response_code, response_message), response_headers, data)
+
 
 class Response(object):
 
-	def __init__(self,raw_response):
-		pass
+	def __init__(self,response_line_tuple, response_headers, response_body = None):
+		self.response = response_line_tuple[1]
+		self.protocol = response_line_tuple[0]
+		self.response_short = response_line_tuple[2]
+		self.headers = self.parse_headers(response_headers)
+		self.text = response_body
+
+	def parse_headers(self,headers_list):
+		temp_dict = {}
+		for header in headers_list:
+			key,value = header.split(':',1)
+			temp_dict[key] = value
+		return temp_dict
+
+	def jsonify(self):
+		try:
+			return json.loads(self.text)
+		except ValueError:
+			return self.text
 
 if __name__=='__main__':
 	p = Connection('http://api.openweathermap.org/data/2.5/weather?q=London')
-	p.get()
+	x = p.get()
+	print x.jsonify()
+
