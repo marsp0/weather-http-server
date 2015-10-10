@@ -8,6 +8,11 @@ class WeatherRequestHandler(StreamRequestHandler):
 	#copied from the SimpleHTTPServer because LAZY lel
 	http_version = 'HTTP/1.1'
 
+	#get city name end point
+	get_city_endpoint = 'http://maps.googleapis.com/maps/api/geocode/json?address={}&sensor=false'
+
+	get_temp_endpoint = 'https://api.forecast.io/forecast/6a4c45ac424571a4cef7287371febf77/{},{}'
+
 	error_message = '''
 	<html>
 		<head>						
@@ -113,19 +118,39 @@ class WeatherRequestHandler(StreamRequestHandler):
 				self.send_error(404)
 
 	def post(self):
+		#we check the path
+		#i have to figure out how to redirect and place the args in the link lel
 		if self.path == '/':
+			#fetch the content length
 			to_get = int(self.headers['Content-Length'])
-			if to_get > 1024:
+			#if its bigger than 100 (the longest name of a city is 85 chars)
+			#we raise an error
+			if to_get > 100:
 				self.send_error(404)
 			else:
 				data = self.rfile.read(to_get)
+			#we get the argument (city_coords) and the value which can be coordinates or city name
 			arg, value = data.split('=',1)
-			connection = shl.Connection('http://api.openweathermap.org/data/2.5/weather?q={}&key=19b027647cd09a6fdb090fd32a2d73fc'.format(value))
-			response = connection.get()
-			response_dict = response.jsonify()
-			print response_dict
+			#need to add checking for 'city, country' entering, duplicate city names and coordinates
+			print self.get_city_endpoint.format(value)
+			get_coords = shl.Connection(self.get_city_endpoint.format(value))
+			coord_response = get_coords.get()
+			if coord_response.response == '200':
+				response_dict = str(coord_response.text)
+				print response_dict
+				lat = response_dict['results'][0]['geometry']['location']['lat']
+				lon = response_dict['results'][0]['geometry']['location']['lon']
+			else:
+				self.send_error(404)
+			get_temp = shl.Connection(self.get_temp_endpoint.format(lat,lon))
+			get_temp_response = get_temp.get()
+			if get_temp_response.response == '200':
+				response_dict = get_temp_response.jsonify()
+				print response_dict['currently']
+			else:
+				self.send_error(404)
 			to_return = open('templates/results.html').read().format(city_name = value, weather = response_dict['weather'][0]['main'],
-																		temp = response_dict['main']['temp'],
+																		temp = c_temp,
 																		pressure = response_dict['main']['pressure'],
 																		wind_speed = response_dict['wind']['speed'],
 																		wind_degrees = response_dict['wind']['deg'])

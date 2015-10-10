@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 #My effort of trying to build a simple httplib module
 #just for the fun of it :)
 #it works only for http
@@ -16,6 +19,10 @@ import json
 '''Exceptions here'''
 
 class BaseConnectionException(Exception):
+
+	pass
+
+class ConnectionClosed(BaseConnectionException):
 
 	pass
 
@@ -74,6 +81,7 @@ class Connection(object):
 			self.sock = socket.create_connection((self.end_host,self.end_port))
 			self.sock = self.sock.makefile()
 			self.protocol_version = 'HTTP/1.1'
+			self.conn_alive = True
 		#raise this error if the address is not starting with http or if its some other schema
 		#for now we handle only http
 		except NotSupportedSchema:
@@ -129,30 +137,33 @@ class Connection(object):
 			raise HeaderDoesntExist(header)
 
 	def get(self,data = None):
-		#prepare the request line with placeholders for the data path and the http version
-		request_line = 'GET {} {}\r\n'
-		if not data:
-			#if the get method was called without any data, then we use the one passed to the constructor
-			if self.data:
-				request_line = request_line.format('/'+self.data, self.protocol_version)
-			#if no data was passed to the constructor we just request the home page
-			elif self.data == '':	
-				request_line = request_line.format('/',self.protocol_version)
-		else:
-			#here we prepend the '/' to the path
-			if not data.startswith('/'):
-				request_line = request_line.format('/' + data, self.protocol_version)
+		if self.conn_alive == True:
+			#prepare the request line with placeholders for the data path and the http version
+			request_line = 'GET {} {}\r\n'
+			if not data:
+				#if the get method was called without any data, then we use the one passed to the constructor
+				if self.data:
+					request_line = request_line.format('/'+self.data, self.protocol_version)
+				#if no data was passed to the constructor we just request the home page
+				elif self.data == '':	
+					request_line = request_line.format('/',self.protocol_version)
 			else:
-				request_line = request_line.format(data, self.protocol_version)
-		#prepare the whole request
-		to_send = request_line + self.string_headers()
-		#we send the info
-		self.sock.write(to_send)
-		#for some reason we have to flush manually because it stays in the buffer
-		#i say for some reason because when i send info from the server to the client i dont have to call flush manually
-		#probably there is some logic that i dont understand
-		self.sock.flush()
-		return self.handle_response()
+				#here we prepend the '/' to the path
+				if not data.startswith('/'):
+					request_line = request_line.format('/' + data, self.protocol_version)
+				else:
+					request_line = request_line.format(data, self.protocol_version)
+			#prepare the whole request
+			to_send = request_line + self.string_headers()
+			#we send the info
+			self.sock.write(to_send)
+			#for some reason we have to flush manually because it stays in the buffer
+			#i say for some reason because when i send info from the server to the client i dont have to call flush manually
+			#probably there is some logic that i dont understand
+			self.sock.flush()
+			return self.handle_response()
+		else:
+			raise ConnectionClosed()
 
 	def handle_response(self):
 		''' function that returns a response object '''
@@ -173,21 +184,20 @@ class Connection(object):
 			response_header_string += response_line
 			response_line = self.sock.readline()
 		#create a list from the header string
-		response_headers = response_header_string.rstrip('\r\n').split('\r\n')
+		response_headers = self.parse_headers(response_header_string.rstrip('\r\n').split('\r\n'))
 		#return the response if  there was no body to read
 		if response_code.startswith('1') or response_code in ('204','304'):
-			return Response((protocol, response_code, response_message), response_headers, responses[int(response_code)])
+			response_object =  Response((protocol, response_code, response_message), response_headers, responses[int(response_code)])
 		else:
 			#if there is body we ceck the Content length or the Transfer Encoding for the length of the body
-			for header in response_headers:
+			for header in response_headers.keys():
 				data = ''
-				#check if the header is content length and get the body
-				if header.startswith('Content-Length'):
-					length = int(header[header.find(':')+1:].strip())
+				if header == 'content-length':
+					length = int(response_headers[header])
 					data = self.sock.read(length)
-					return Response((protocol, response_code, response_message), response_headers, data)
+					response_object =  Response((protocol, response_code, response_message), response_headers, data)
 				#if on the other hand is Transfer-Envoding we again get the rest of the body
-				elif header == 'Transfer-Encoding: chunked':
+				elif header == 'transfer-encoding':
 					while True:
 						chunk_size = self.sock.readline()
 						if chunk_size != '0\r\n':
@@ -196,7 +206,19 @@ class Connection(object):
 							_ = self.sock.readline()
 						else:
 							break
-					return Response((protocol, response_code, response_message), response_headers, data)
+					response_object = Response((protocol, response_code, response_message), response_headers, data)
+		if not response_headers['connection'] == 'keep-alive':
+			self.sock.close()
+			self.conn_alive = False
+		return response_object
+
+	def parse_headers(self,headers_list):
+		temp_dict = {}
+		for header in headers_list:
+			key,value = header.split(':',1)
+			temp_dict[key.lower()] = value.strip().lower()
+		return temp_dict
+
 
 
 class Response(object):
@@ -205,15 +227,8 @@ class Response(object):
 		self.response = response_line_tuple[1]
 		self.protocol = response_line_tuple[0]
 		self.response_short = response_line_tuple[2]
-		self.headers = self.parse_headers(response_headers)
+		self.headers = response_headers
 		self.text = response_body
-
-	def parse_headers(self,headers_list):
-		temp_dict = {}
-		for header in headers_list:
-			key,value = header.split(':',1)
-			temp_dict[key] = value
-		return temp_dict
 
 	def jsonify(self):
 		try:
@@ -224,5 +239,7 @@ class Response(object):
 if __name__=='__main__':
 	p = Connection('http://api.openweathermap.org/data/2.5/weather?q=London')
 	x = p.get()
+	a = p.get()
 	print x.jsonify()
+	print a.text
 
