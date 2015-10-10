@@ -15,6 +15,12 @@
 import socket
 from utils import responses
 import json
+#for the decompression
+import gzip
+#for the filelike bytes object
+from io import BytesIO
+
+
 
 '''Exceptions here'''
 
@@ -162,6 +168,8 @@ class Connection(object):
 			#probably there is some logic that i dont understand
 			self.sock.flush()
 			return self.handle_response()
+		#if in the previous request, the response header 'Connection' was set to close
+		#we raise an exception because the socket is already closed.
 		else:
 			raise ConnectionClosed()
 
@@ -189,28 +197,42 @@ class Connection(object):
 		if response_code.startswith('1') or response_code in ('204','304'):
 			response_object =  Response((protocol, response_code, response_message), response_headers, responses[int(response_code)])
 		else:
-			#if there is body we ceck the Content length or the Transfer Encoding for the length of the body
+			data = ''
+			#we start iterating over the headers in order to find out the size of the body
+			#NOTE : need to figure out what to do if there is no body and the response code is not starting with 1 or 204 or 304
 			for header in response_headers.keys():
-				data = ''
+				#if we see content-length header, we check its value and then read that many bytes
 				if header == 'content-length':
 					length = int(response_headers[header])
 					data = self.sock.read(length)
-					response_object =  Response((protocol, response_code, response_message), response_headers, data)
 				#if on the other hand is Transfer-Envoding we again get the rest of the body
+				#NOTE : need to narrow down this elif to CHUNKED transfer encoding
 				elif header == 'transfer-encoding':
+					#we use a loop here because the content length is in the body and not in the headers
 					while True:
 						chunk_size = self.sock.readline()
+						#if the line starts with 0 then that is the end of the body
 						if chunk_size != '0\r\n':
 							chunk_size = int('0x' + chunk_size.rstrip('\r\n'), 0)
 							data = self.sock.read(chunk_size).rstrip('\n')
 							_ = self.sock.readline()
 						else:
 							break
-					response_object = Response((protocol, response_code, response_message), response_headers, data)
+			#check the encoding and decompress the data
+			if response_headers['Content-Encoding'] == 'gzip':
+				data = self.decompress(data)
+			response_object = Response((protocol, response_code, response_message), response_headers, data)
 		if not response_headers['connection'] == 'keep-alive':
+			#if the connection header is set to anything that is not 'keep-alive' we close the connection
+			#and set the flag
 			self.sock.close()
 			self.conn_alive = False
 		return response_object
+
+	def decompress(self,data):
+		gzip_file = gzip.GzipFile(fileobj=BytesIO(data),mode='rb')
+		return gzip_file.read()
+
 
 	def parse_headers(self,headers_list):
 		temp_dict = {}
@@ -224,6 +246,14 @@ class Connection(object):
 class Response(object):
 
 	def __init__(self,response_line_tuple, response_headers, response_body = None):
+		''' The response object that gets returned from the get and post methods.
+
+			response_line_tuple contains the protocol, response code and the short message
+			headers is a dict containing all the headers
+			and text contains the body of the response
+
+		'''
+
 		self.response = response_line_tuple[1]
 		self.protocol = response_line_tuple[0]
 		self.response_short = response_line_tuple[2]
@@ -237,9 +267,12 @@ class Response(object):
 			return self.text
 
 if __name__=='__main__':
-	p = Connection('http://api.openweathermap.org/data/2.5/weather?q=London')
+	# p = Connection('http://api.openweathermap.org/data/2.5/weather?q=London')
+	# x = p.get()
+	p = Connection('http://maps.googleapis.com/maps/api/geocode/json?address=Sofia&sensor=false')
 	x = p.get()
-	a = p.get()
-	print x.jsonify()
-	print a.text
+	dicta = x.jsonify()
+	for key in dicta:
+		print key
+
 
