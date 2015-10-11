@@ -123,12 +123,9 @@ class Connection(object):
 		#add the trailing line and return
 		return headers + '\r\n'
 
-	def add_header(self,hdr_tupl):
+	def add_header(self,key,value):
 		''' try the add header'''
-		try:
-			self.headers[hdr_tupl[0]] = hdr_tupl[1]
-		except IndexError:
-			raise AddHeaderError(hdr_tupl)
+		self.headers[key,value]
 
 	def modify_header(self,header,value):
 		try:
@@ -198,30 +195,27 @@ class Connection(object):
 			response_object =  Response((protocol, response_code, response_message), response_headers, responses[int(response_code)])
 		else:
 			data = ''
-			#we start iterating over the headers in order to find out the size of the body
-			#NOTE : need to figure out what to do if there is no body and the response code is not starting with 1 or 204 or 304
-			for header in response_headers.keys():
-				#if we see content-length header, we check its value and then read that many bytes
-				if header == 'content-length':
-					length = int(response_headers[header])
-					data = self.sock.read(length)
-				#if on the other hand is Transfer-Envoding we again get the rest of the body
-				#NOTE : need to narrow down this elif to CHUNKED transfer encoding
-				elif header == 'transfer-encoding':
-					#we use a loop here because the content length is in the body and not in the headers
-					while True:
-						chunk_size = self.sock.readline()
-						#if the line starts with 0 then that is the end of the body
-						if chunk_size != '0\r\n':
-							chunk_size = int('0x' + chunk_size.rstrip('\r\n'), 0)
-							data = self.sock.read(chunk_size).rstrip('\n')
-							_ = self.sock.readline()
-						else:
-							break
-			#check the encoding and decompress the data
-			if response_headers['Content-Encoding'] == 'gzip':
-				data = self.decompress(data)
-			response_object = Response((protocol, response_code, response_message), response_headers, data)
+			#if on the other hand is Transfer-Encoding we again get the rest of the body
+			#NOTE : need to narrow down this elif to CHUNKED transfer encoding
+			if 'transfer-encoding' in response_headers:
+				#we use a loop here because the content length is in the body and not in the headers
+				while True:
+					chunk_size = self.sock.readline()
+					#if the line starts with 0 then that is the end of the body
+					if chunk_size != '0\r\n':
+						chunk_size = int('0x' + chunk_size.rstrip('\r\n'), 0)
+						data = self.sock.read(chunk_size).rstrip('\n')
+						_ = self.sock.readline()
+					else:
+						break
+			#if we see content-length header, we check its value and then read that many bytes
+			elif 'content-length' in response_headers:
+				length = int(response_headers[header])
+				data = self.sock.read(length)
+		#check the encoding and decompress the data
+		if response_headers['Content-Encoding'] == 'gzip':
+			data = self.decompress(data)
+		response_object = Response((protocol, response_code, response_message), response_headers, data)
 		if not response_headers['connection'] == 'keep-alive':
 			#if the connection header is set to anything that is not 'keep-alive' we close the connection
 			#and set the flag
