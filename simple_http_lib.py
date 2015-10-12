@@ -82,6 +82,7 @@ class Connection(object):
 							'Accept-Language' : 'en-US',
 							'Connection' : 'keep-alive',
 							'User-Agent' : 'Python-simple_http_lib-2.7',
+							'Allow' : 'GET, POST',
 							}
 			#creating the socket and connecting instead of doing it manually
 			self.sock = socket.create_connection((self.end_host,self.end_port))
@@ -210,15 +211,22 @@ class Connection(object):
 						break
 			#if we see content-length header, we check its value and then read that many bytes
 			elif 'content-length' in response_headers:
-				length = int(response_headers[header])
+				length = int(response_headers['content-length'])
 				data = self.sock.read(length)
 		#check the encoding and decompress the data
-		if response_headers['Content-Encoding'] == 'gzip':
-			data = self.decompress(data)
+		try:
+			if response_headers['content-encoding'] == 'gzip':
+				data = self.decompress(data)
+		except KeyError:
+			pass
 		response_object = Response((protocol, response_code, response_message), response_headers, data)
-		if not response_headers['connection'] == 'keep-alive':
-			#if the connection header is set to anything that is not 'keep-alive' we close the connection
-			#and set the flag
+		try:
+			if not response_headers['connection'] == 'keep-alive':
+				#if the connection header is set to anything that is not 'keep-alive' we close the connection
+				#and set the flag
+				self.sock.close()
+				self.conn_alive = False
+		except KeyError:
 			self.sock.close()
 			self.conn_alive = False
 		return response_object

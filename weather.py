@@ -132,14 +132,12 @@ class WeatherRequestHandler(StreamRequestHandler):
 			#we get the argument (city_coords) and the value which can be coordinates or city name
 			arg, value = data.split('=',1)
 			#need to add checking for 'city, country' entering, duplicate city names and coordinates
-			print self.get_city_endpoint.format(value)
 			get_coords = shl.Connection(self.get_city_endpoint.format(value))
 			coord_response = get_coords.get()
 			if coord_response.response == '200':
-				response_dict = str(coord_response.text)
-				print response_dict
+				response_dict = coord_response.jsonify()
 				lat = response_dict['results'][0]['geometry']['location']['lat']
-				lon = response_dict['results'][0]['geometry']['location']['lon']
+				lon = response_dict['results'][0]['geometry']['location']['lng']
 			else:
 				self.send_error(404)
 			get_temp = shl.Connection(self.get_temp_endpoint.format(lat,lon))
@@ -166,5 +164,5 @@ class WeatherRequestHandler(StreamRequestHandler):
 
 
 if __name__=='__main__':
-	server = ThreadingTCPServer(('',9997),WeatherRequestHandler)
+	server = ThreadingTCPServer(('',9994),WeatherRequestHandler)
 	server.serve_forever()
