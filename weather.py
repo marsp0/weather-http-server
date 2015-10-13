@@ -134,24 +134,28 @@ class WeatherRequestHandler(StreamRequestHandler):
 			#need to add checking for 'city, country' entering, duplicate city names and coordinates
 			get_coords = shl.Connection(self.get_city_endpoint.format(value))
 			coord_response = get_coords.get()
+			#if we get a positive response we extract the lat and lon from the json dict
 			if coord_response.response == '200':
 				response_dict = coord_response.jsonify()
 				lat = response_dict['results'][0]['geometry']['location']['lat']
 				lon = response_dict['results'][0]['geometry']['location']['lng']
 			else:
 				self.send_error(404)
-			get_temp = shl.Connection(self.get_temp_endpoint.format(lat,lon))
+			#connect to the weather api and get the info
+			get_temp = shl.SConnection(self.get_temp_endpoint.format(lat,lon))
 			get_temp_response = get_temp.get()
 			if get_temp_response.response == '200':
 				response_dict = get_temp_response.jsonify()
-				print response_dict['currently']
 			else:
 				self.send_error(404)
-			to_return = open('templates/results.html').read().format(city_name = value, weather = response_dict['weather'][0]['main'],
+			c_temp = round((response_dict['currently']['temperature'] - 32) * 5/9)
+			to_return = open('templates/results.html').read().format(city_name = value, 
+																		weather = response_dict['currently']['summary'],
 																		temp = c_temp,
-																		pressure = response_dict['main']['pressure'],
-																		wind_speed = response_dict['wind']['speed'],
-																		wind_degrees = response_dict['wind']['deg'])
+																		pressure = response_dict['currently']['pressure'],
+																		wind_speed = response_dict['currently']['windSpeed'],
+																		humidity = response_dict['currently']['humidity'],
+																		icon = response_dict['currently']['icon'])
 			self.send_response(200)
 			self.send_headers('Content-Type','text/html')
 			self.send_headers('Content-Length','{}'.format(len(to_return)))
@@ -164,5 +168,5 @@ class WeatherRequestHandler(StreamRequestHandler):
 
 
 if __name__=='__main__':
-	server = ThreadingTCPServer(('',9994),WeatherRequestHandler)
+	server = ThreadingTCPServer(('',9992),WeatherRequestHandler)
 	server.serve_forever()
