@@ -3,7 +3,7 @@
 
 #My effort of trying to build a simple httplib module
 #just for the fun of it :)
-#it works only for http
+#it works only for http (now works even for https yay)
 
 #my idea of how this should work 
 #1. create and connect AF_INET, SOCK_STREAM socket
@@ -13,6 +13,7 @@
 #5. repeat i guess
 
 import socket
+import ssl
 from utils import responses
 import json
 #for the decompression
@@ -71,38 +72,38 @@ class Connection(object):
 		try:
 			#the data passed after the address
 			self.data = ''
-			#the address of the host
-			self.end_host = self.parse_link(website)
-			#the HTTP port
-			self.end_port = 80
+			self.raw_link  = website
 			#generic headers that every request has
 			self.headers = { 'Accept' : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-							'Host' : self.end_host,	
 							'Accept-Encoding' : 'gzip, deflate, sdch',
 							'Accept-Language' : 'en-US',
 							'Connection' : 'keep-alive',
 							'User-Agent' : 'Python-simple_http_lib-2.7',
-							'Allow' : 'GET, POST',
 							}
-			#creating the socket and connecting instead of doing it manually
-			self.sock = socket.create_connection((self.end_host,self.end_port))
-			self.sock = self.sock.makefile()
+			self.make_connection()
 			self.protocol_version = 'HTTP/1.1'
 			self.conn_alive = True
-		#raise this error if the address is not starting with http or if its some other schema
-		#for now we handle only http
-		except NotSupportedSchema:
-			raise
 		#raising AddressException if for some reason the we can't connect
 		#usually because of wrong address
 		#no need to  raise the super generic socket.error
 		except socket.error:
 			raise AddressException(self.end_host)
 
+	def make_connection(self):
+		#the address of the host
+		self.end_host = self.parse_link(self.raw_link)
+		#the HTTP port
+		self.end_port = 80
+		self.add_header('Host',self.end_host)
+		#creating the socket and connecting instead of doing it manually
+		self.sock = socket.create_connection((self.end_host,self.end_port))
+		self.sock = self.sock.makefile()
+
 	def parse_link(self,website):
 		''' function to parse the website address'''
 		#if it doesnt start with http:// it can be https which we dont support
-		if website.startswith('http://'):
+		schema = website.split('://',1)[0]
+		if schema in ('http','HTTP','HTTPS','https'):
 			temp_address = website[website.find('//')+2:]
 			if '/' in temp_address:
 				end_host, data = temp_address.split('/',1)
@@ -126,7 +127,7 @@ class Connection(object):
 
 	def add_header(self,key,value):
 		''' try the add header'''
-		self.headers[key,value]
+		self.headers[key] = value
 
 	def modify_header(self,header,value):
 		try:
@@ -170,6 +171,12 @@ class Connection(object):
 		#we raise an exception because the socket is already closed.
 		else:
 			raise ConnectionClosed()
+
+	def post(self,data = None, arguments = None):
+		pass
+
+	def head(self):
+		pass
 
 	def handle_response(self):
 		''' function that returns a response object '''
@@ -263,18 +270,27 @@ class Response(object):
 		self.text = response_body
 
 	def jsonify(self):
-		try:
-			return json.loads(self.text)
-		except ValueError:
-			return self.text
+		return json.loads(self.text)
+
+class SConnection(Connection):
+
+	''' https connection using the ssl library. 
+	Note : I thought that it is going to be a lot harder to implement but everything is handled by the ssl module.
+	'''
+
+	def __init__(self,website):
+		self.context = ssl.create_default_context()
+		Connection.__init__(self,website)
+
+	def make_connection(self):
+		self.end_host = self.parse_link(self.raw_link)
+		self.end_port = 443
+		self.add_header('Host',self.end_host)
+		self.sock = self.context.wrap_socket(socket.socket(),server_hostname = self.end_host)
+		self.sock.connect((self.end_host,self.end_port))
+		self.sock = self.sock.makefile()
 
 if __name__=='__main__':
-	# p = Connection('http://api.openweathermap.org/data/2.5/weather?q=London')
-	# x = p.get()
-	p = Connection('http://maps.googleapis.com/maps/api/geocode/json?address=Sofia&sensor=false')
-	x = p.get()
-	dicta = x.jsonify()
-	for key in dicta:
-		print key
-
-
+	conn = SConnection('https://www.dataquest.io/mission/123/introduction-to-spark/')
+	s = conn.get()
+	print s.text
