@@ -2,6 +2,7 @@ from SocketServer import *
 import os
 from utils import responses
 import simple_http_lib as shl
+import datetime
 
 class WeatherRequestHandler(StreamRequestHandler):
 
@@ -12,6 +13,10 @@ class WeatherRequestHandler(StreamRequestHandler):
 	get_city_endpoint = 'http://maps.googleapis.com/maps/api/geocode/json?address={}&sensor=false'
 
 	get_temp_endpoint = 'https://api.forecast.io/forecast/6a4c45ac424571a4cef7287371febf77/{},{}'
+
+	days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
+	months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 	error_message = '''
 	<html>
@@ -102,18 +107,55 @@ class WeatherRequestHandler(StreamRequestHandler):
 			self.send_headers('Content-Type','text/html')
 			self.send_headers('Content-Length','{}'.format(len(response_html)))
 			self.send_headers('Connection','close')
+			self.send_headers('Date',self.get_date())
 			self.end_headers()
 			self.wfile.write(response_html)
 		else:
 			path = self.path[1:]
 			if os.path.exists(path):
+				ext = path.split('.')[-1]
+				if ext == 'css':
+					content_type = 'text/css'
+				elif ext == 'html':
+					content_type = 'text/html'
+				elif ext == 'png':
+					content_type = 'image/png'
+				else:
+					content_type = 'text/plain'
 				response_string = open(path).read()
 				self.send_response(200)
-				self.send_headers('Content-Type','text/css')
+				self.send_headers('Content-Type',content_type)
 				self.send_headers('Content-Length','{}'.format(len(response_string)))
 				self.send_headers('Connection','close')
+				self.send_headers('Date',self.get_date())
 				self.end_headers()
 				self.wfile.write(response_string)
+			elif path.startswith('results?'):
+				lat = path[path.find('lat=')+4:path.find('&',path.find('&')+1)]
+				lon = path[path.find('lon=')+4:]
+				value = path[path.find('name=')+5:path.find('&')]
+				#connect to the weather api and get the info
+				get_temp = shl.SConnection(self.get_temp_endpoint.format(lat,lon))
+				get_temp_response = get_temp.get()
+				if get_temp_response.response == '200':
+					response_dict = get_temp_response.jsonify()
+				else:
+					self.send_error(404)
+				c_temp = round((response_dict['currently']['temperature'] - 32) * 5/9)
+				to_return = open('templates/results.html').read().format(city_name = value, 
+																			weather = response_dict['currently']['summary'],
+																			temp = c_temp,
+																			pressure = response_dict['currently']['pressure'],
+																			wind_speed = response_dict['currently']['windSpeed'],
+																			humidity = response_dict['currently']['humidity'],
+																			icon = response_dict['currently']['icon'])
+				self.send_response(200)
+				self.send_headers('Content-Type','text/html')
+				self.send_headers('Content-Length','{}'.format(len(to_return)))
+				self.send_headers('Connection','close')
+				self.send_headers('Date',self.get_date())
+				self.end_headers()
+				self.wfile.write(to_return)
 			else:
 				self.send_error(404)
 
@@ -141,32 +183,25 @@ class WeatherRequestHandler(StreamRequestHandler):
 				lon = response_dict['results'][0]['geometry']['location']['lng']
 			else:
 				self.send_error(404)
-			#connect to the weather api and get the info
-			get_temp = shl.SConnection(self.get_temp_endpoint.format(lat,lon))
-			get_temp_response = get_temp.get()
-			if get_temp_response.response == '200':
-				response_dict = get_temp_response.jsonify()
-			else:
-				self.send_error(404)
-			c_temp = round((response_dict['currently']['temperature'] - 32) * 5/9)
-			to_return = open('templates/results.html').read().format(city_name = value, 
-																		weather = response_dict['currently']['summary'],
-																		temp = c_temp,
-																		pressure = response_dict['currently']['pressure'],
-																		wind_speed = response_dict['currently']['windSpeed'],
-																		humidity = response_dict['currently']['humidity'],
-																		icon = response_dict['currently']['icon'])
-			self.send_response(200)
-			self.send_headers('Content-Type','text/html')
-			self.send_headers('Content-Length','{}'.format(len(to_return)))
+			self.send_response(302)
 			self.send_headers('Connection','close')
-			self.end_headers()
-			self.wfile.write(to_return)
+			self.send_headers('Location','http://127.0.0.1:9997/results?name={}&lat={}&lon={}'.format(value,lat,lon))
 		else:
 			self.send_error(404)
 
+	def get_date(self):
+		date_str = ''
+		date_now = datetime.datetime.now()
+		date_str += '{weekday}, {day} {month} {year} {hour}:{minute}:{seconds} GMT'.format(weekday = self.days[date_now.weekday()],
+																						day = date_now.day,
+																						month = self.months[date_now.month-1],
+																						year = date_now.year,
+																						hour = date_now.hour,
+																						minute = date_now.minute,
+																						seconds = date_now.second)
+		return date_str
 
 
 if __name__=='__main__':
-	server = ThreadingTCPServer(('',9992),WeatherRequestHandler)
+	server = ThreadingTCPServer(('',9997),WeatherRequestHandler)
 	server.serve_forever()
