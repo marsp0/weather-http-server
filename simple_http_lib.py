@@ -201,6 +201,13 @@ class Connection(object):
 		#return the response if  there was no body to read
 		if response_code.startswith('1') or response_code in ('204','304'):
 			response_object =  Response((protocol, response_code, response_message), response_headers, responses[int(response_code)])
+		elif response_code in ('301','302','307'):
+			if 'location' in response_headers:
+				if response_headers['location'].startswith('https'):
+					conn = SConnection(response_headers['location'])
+				else:
+					conn = Connection(response_headers['location'])
+				return conn.get()
 		else:
 			data = ''
 			#if on the other hand is Transfer-Encoding we again get the rest of the body
@@ -291,6 +298,6 @@ class SConnection(Connection):
 		self.sock = self.sock.makefile()
 
 if __name__=='__main__':
-	conn = SConnection('https://www.dataquest.io/mission/123/introduction-to-spark/')
+	conn = Connection('http://google.com')
 	s = conn.get()
 	print s.text
