@@ -63,6 +63,12 @@ class HeaderDoesntExist(HeaderException):
 		HeaderException.__init__(self,header)
 		self.message = 'The given header doesn\'t exist'
 
+class NonDeletableHeader(HeaderException):
+
+	def __init__(self,header):
+		HeaderException.__init__(self,header)
+		self.message = 'The header cannot be deleted'
+
 '''Connection class for establishement of the connection '''
 
 class Connection(object):
@@ -121,7 +127,7 @@ class Connection(object):
 
 	def string_headers(self):
 		''' string representation of all the headers and the trailing line'''
-		headers = ''.join(['{}: {}\r\n'.format(key,value) for key,value in self.headers.items()])
+		headers = ''.join(['{}: {}\r\n'.format(key.capitalize(),value.capitalize()) for key,value in self.headers.items()])
 		#add the trailing line and return
 		return headers + '\r\n'
 
@@ -137,6 +143,8 @@ class Connection(object):
 
 	def delete_header(self,header):
 		try:
+			if header in ('host','Host'):
+				raise NonDeletableHeader(header)
 			del self.headers[header]
 		except KeyError:
 			raise HeaderDoesntExist(header)
@@ -299,5 +307,6 @@ class SConnection(Connection):
 
 if __name__=='__main__':
 	conn = Connection('http://google.com')
+	conn.delete_header('host')
 	s = conn.get()
-	print s.text
+	print s.headers

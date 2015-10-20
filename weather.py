@@ -30,6 +30,7 @@ class WeatherRequestHandler(StreamRequestHandler):
 	'''
 
 	def handle(self):
+		
 		#we read the first line of the the request and split it
 		request_list = self.rfile.readline().split()
 		#we check if the path/command/version are in the list
