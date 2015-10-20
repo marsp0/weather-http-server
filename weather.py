@@ -132,64 +132,39 @@ class WeatherRequestHandler(StreamRequestHandler):
 				self.end_headers()
 				self.wfile.write(response_string)
 			elif path.startswith('results?'):
-				lat = path[path.find('lat=')+4:path.find('&',path.find('&')+1)]
-				lon = path[path.find('lon=')+4:]
-				value = path[path.find('name=')+5:path.find('&')]
-				#connect to the weather api and get the info
-				get_temp = shl.SConnection(self.get_temp_endpoint.format(lat,lon))
-				get_temp_response = get_temp.get()
-				if get_temp_response.response == '200':
-					response_dict = get_temp_response.jsonify()
-					c_temp = round((response_dict['currently']['temperature'] - 32) * 5/9)
-					to_return = open('templates/results.html').read().format(city_name = value, 
-																				weather = response_dict['currently']['summary'],
-																				temp = c_temp,
-																				pressure = response_dict['currently']['pressure'],
-																				wind_speed = response_dict['currently']['windSpeed'],
-																				humidity = response_dict['currently']['humidity'],
-																				icon = response_dict['currently']['icon'])
-					self.send_response(200)
-					self.send_headers('Content-Type','text/html')
-					self.send_headers('Content-Length','{}'.format(len(to_return)))
-					self.send_headers('Connection','close')
-					self.send_headers('Date',self.get_date())
-					self.end_headers()
-					self.wfile.write(to_return)
+				city_name = path.split('=',1)[1]
+				get_coords = shl.Connection(self.get_city_endpoint.format(city_name))
+				coord_response = get_coords.get()
+				response_dict = coord_response.jsonify()
+				#if we get a positive response we extract the lat and lon from the json dict
+				if response_dict['status'] != 'ZERO_RESULTS':
+					lat = response_dict['results'][0]['geometry']['location']['lat']
+					lon = response_dict['results'][0]['geometry']['location']['lng']
+					get_temp = shl.SConnection(self.get_temp_endpoint.format(lat,lon))
+					get_temp_response = get_temp.get()
+					if get_temp_response.response == '200':
+						response_dict = get_temp_response.jsonify()
+						c_temp = round((response_dict['currently']['temperature'] - 32) * 5/9)
+						to_return = open('templates/results.html').read().format(city_name = city_name, 
+																					weather = response_dict['currently']['summary'],
+																					temp = c_temp,
+																					pressure = response_dict['currently']['pressure'],
+																					wind_speed = response_dict['currently']['windSpeed'],
+																					humidity = response_dict['currently']['humidity'],
+																					icon = response_dict['currently']['icon'])
+						self.send_response(200)
+						self.send_headers('Content-Type','text/html')
+						self.send_headers('Content-Length','{}'.format(len(to_return)))
+						self.send_headers('Connection','close')
+						self.send_headers('Date',self.get_date())
+						self.end_headers()
+						self.wfile.write(to_return)
+					else:
+						self.send_error(404)
 				else:
 					self.send_error(404)
 			else:
 				self.send_error(404)
-
-	def post(self):
-		#we check the path
-		#i have to figure out how to redirect and place the args in the link lel
-		if self.path == '/':
-			#fetch the content length
-			to_get = int(self.headers['Content-Length'])
-			#if its bigger than 100 (the longest name of a city is 85 chars)
-			#we raise an error
-			if to_get > 100:
-				self.send_error(404)
-			else:
-				data = self.rfile.read(to_get)
-			#we get the argument (city_coords) and the value which can be coordinates or city name
-			arg, value = data.split('=',1)
-			#need to add checking for 'city, country' entering, duplicate city names and coordinates
-			get_coords = shl.Connection(self.get_city_endpoint.format(value))
-			coord_response = get_coords.get()
-			#if we get a positive response we extract the lat and lon from the json dict
-			if coord_response.response == '200':
-				response_dict = coord_response.jsonify()
-				lat = response_dict['results'][0]['geometry']['location']['lat']
-				lon = response_dict['results'][0]['geometry']['location']['lng']
-				self.send_response(302)
-				self.send_headers('Connection','close')
-				self.send_headers('Location','http://127.0.0.1:9997/results?name={}&lat={}&lon={}'.format(value.capitalize(),lat,lon))
-				self.end_headers()
-			else:
-				self.send_error(404)
-		else:
-			self.send_error(404)
 
 	def get_date(self):
 		date_str = ''
@@ -205,5 +180,5 @@ class WeatherRequestHandler(StreamRequestHandler):
 
 
 if __name__=='__main__':
-	server = ThreadingTCPServer(('',9997),WeatherRequestHandler)
+	server = ThreadingTCPServer(('',9994),WeatherRequestHandler)
 	server.serve_forever()
