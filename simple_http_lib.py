@@ -127,7 +127,7 @@ class Connection(object):
 
 	def string_headers(self):
 		''' string representation of all the headers and the trailing line'''
-		headers = ''.join(['{}: {}\r\n'.format(key.capitalize(),value.capitalize()) for key,value in self.headers.items()])
+		headers = ''.join(['{}: {}\r\n'.format(key.capitalize(),value) for key,value in self.headers.items()])
 		#add the trailing line and return
 		return headers + '\r\n'
 
@@ -154,12 +154,7 @@ class Connection(object):
 			#prepare the request line with placeholders for the data path and the http version
 			request_line = 'GET {} {}\r\n'
 			if not data:
-				#if the get method was called without any data, then we use the one passed to the constructor
-				if self.data:
-					request_line = request_line.format('/'+self.data, self.protocol_version)
-				#if no data was passed to the constructor we just request the home page
-				elif self.data == '':	
-					request_line = request_line.format('/',self.protocol_version)
+				request_line = request_line.format('/'+self.data, self.protocol_version)
 			else:
 				#here we prepend the '/' to the path
 				if not data.startswith('/'):
@@ -180,8 +175,29 @@ class Connection(object):
 		else:
 			raise ConnectionClosed()
 
-	def post(self,data = None, arguments = None):
-		pass
+	def post(self,data = None , arguments = None):
+		''' post request that sends the arguments '''
+		if self.conn_alive == True:
+			#preparing the request
+			request_line = 'POST {} {}\r\n'
+			if not data:
+				request_line = request_line.format('/'+self.data,self.protocol_version)
+			else:
+				if data.startswith('/'):
+					request_line = request_line.format(data,self.protocol_version)
+				else:
+					request_line = request_line.format('/'+data,self.protocol_version)
+			#preparing the body
+			body = '&'.join(['{}={}'.format(key,value) for key, value in arguments.items()])
+			self.add_header('Content-Type','text/plain')
+			self.add_header('Content-Length',str(len(body)))
+			to_send = request_line + self.string_headers() + '\r\n' + body
+			self.sock.write(to_send)
+			self.sock.flush()
+			return self.handle_response()
+		else:
+			raise ConnectionClosed()
+
 
 	def head(self):
 		pass
@@ -306,7 +322,4 @@ class SConnection(Connection):
 		self.sock = self.sock.makefile()
 
 if __name__=='__main__':
-	conn = Connection('http://google.com')
-	conn.delete_header('host')
-	s = conn.get()
-	print s.headers
+	conn = SConnection('http://www.posttestserver.com/')
